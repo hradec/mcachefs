@@ -70,7 +70,7 @@ mcachefs_parse_config(int argc, char *argv[])
      */
     config->read_state = MCACHEFS_STATE_NORMAL;
     config->write_state = MCACHEFS_WRSTATE_CACHE;
-    config->file_thread_interval = 60;
+    config->file_thread_interval = 1;
     config->file_ttl = 300;
     config->metadata_map_ttl = 10;
     config->transfer_max_rate = 10000000;
@@ -188,8 +188,9 @@ mcachefs_set_current_config(struct mcachefs_config *config)
     int threadtype;
     for (threadtype = 0; threadtype < MCACHEFS_TRANSFER_TYPES; threadtype++)
     {
-        config->transfer_threads_type_nb[threadtype] = 1;
+        config->transfer_threads_type_nb[threadtype] = 2;
     }
+    config->transfer_threads_type_nb[0] = 8;
 
     current_config = config;
 }
@@ -322,7 +323,7 @@ mcachefs_config_get_file_ttl()
     return current_config->file_ttl;
 }
 
-extern const int mcachefs_file_timeslice_nb;
+
 
 void
 mcachefs_config_set_file_ttl(int ttl)

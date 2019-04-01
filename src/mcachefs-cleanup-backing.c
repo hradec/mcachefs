@@ -189,7 +189,7 @@ mcachefs_backing_sort(struct mcachefs_backing_files *filelist)
 
 
 void
-mcachefs_cleanup_backing()      // struct mcachefs_file_t *mvops, int simulate)
+mcachefs_cleanup_backing(struct mcachefs_file_t *mvops, int simulate)
 {
     int rootfd = -1, backingfd;
     int max_age;
