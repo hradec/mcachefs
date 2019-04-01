@@ -61,6 +61,33 @@ struct mcachefs_metadata_map_t *metadata_map = NULL;
 mcachefs_metadata_id metadata_map_mmap_count = 0;
 size_t metadata_map_sz = 0;
 
+#define SIGBUS_safe(stuff, orelse, howToFixStuff) \
+  {\
+    unsigned long long sigbus=0;\
+    int __SIGBUS_safe_termination_handler__(int signum){\
+         sigbus++;\
+         howToFixStuff;\
+         if (sigbus>20) _exit(-1);\
+         Log("====>SIGBUS/SIGSEVG - %llu!\n", sigbus);\
+    }\
+    signal (SIGBUS, __SIGBUS_safe_termination_handler__);\
+    signal (SIGSEGV, __SIGBUS_safe_termination_handler__);\
+    sigbus=0;\
+    while(1){\
+      Log("====>?? - %llu!\n", sigbus);\
+       if (sigbus>10) break;\
+       if (sigbus){\
+         sigbus=0;\
+         orelse;\
+         break;\
+       }\
+       sigbus=0;\
+       stuff;\
+       break;\
+    }\
+  }
+
+
 /**
  * **************************************** VERY LOW LEVEL *******************************************
  * format, open and close the metafile
@@ -94,18 +121,21 @@ mcachefs_metadata_do_get(mcachefs_metadata_id id)
         mcachefs_metadata_mmap_block(block);
     }
 
-    // we have to check if the corresponding block for the given ID
-    // exists, unless we have to return NULL
-    // https://github.com/Doloops/mcachefs/issues/5
-    if ( block >= metadata_map_mmap_count ){
-      return NULL;
-    }
     metadata_map[block].last_used = mcachefs_get_jiffy_sec();
     struct mcachefs_metadata_t *meta =
         (struct mcachefs_metadata_t *) ((unsigned long)
                                         metadata_map[block].map +
                                         (block_idx *
                                          MCACHEFS_METADATA_ENTRY_SIZE));
+
+    // we have to check if the corresponding block for the given ID
+    // exists, unless we have to return NULL
+    // https://github.com/Doloops/mcachefs/issues/5
+    // if ( block >= metadata_map_mmap_count ){
+    //   return NULL;
+    // }
+    // Log("===> %llu %llu\n", block, metadata_map_mmap_count);
+    // SIGBUS_safe( meta = meta,  meta=NULL, meta = NULL )
 
     return meta;
 }
@@ -182,6 +212,8 @@ mcachefs_metadata_format()
                                           MCACHEFS_METADATA_BLOCK_ENTRY_COUNT);
 }
 
+
+
 void
 mcachefs_metadata_reset_fh()
 {
@@ -191,7 +223,7 @@ mcachefs_metadata_reset_fh()
     for (id = 1; id < mcachefs_metadata_head->alloced_nb; id++)
     {
         struct mcachefs_metadata_t *mdata = mcachefs_metadata_do_get(id);
-        mdata->fh = 0;
+        if (mdata!=NULL) mdata->fh = 0;
     }
 }
 
@@ -553,6 +585,10 @@ mcachefs_metadata_allocate()
     }
     struct mcachefs_metadata_t *next =
         mcachefs_metadata_do_get(mcachefs_metadata_head->first_free);
+    if (!next){
+        Log("Invalid next - NULL!\n");
+        // return -1;
+    }
     mcachefs_metadata_head->first_free = next->next;
 
     if (next->id == 0)
@@ -1012,6 +1048,7 @@ mcachefs_metadata_add_child_ids(mcachefs_metadata_id father_id,
     mcachefs_metadata_do_add_child(father, child);
 }
 
+char root_initiated=0;
 int
 mcachefs_metadata_recurse_open(struct mcachefs_metadata_t *father)
 {
@@ -1019,9 +1056,14 @@ mcachefs_metadata_recurse_open(struct mcachefs_metadata_t *father)
 
     if (!father->father)
     {
-        return open(mcachefs_config_get_source(), O_RDONLY);
-    }
-    fd = mcachefs_metadata_recurse_open(mcachefs_metadata_do_get
+        // if (!root_initiated)  
+        {
+          Log("open mcachefs_config_get_source(), d_name=%s\n",  father->d_name);
+          root_initiated = 1;
+          return open(mcachefs_config_get_source(), O_RDONLY);
+        }
+    }else
+        fd = mcachefs_metadata_recurse_open(mcachefs_metadata_do_get
                                         (father->father));
     if (fd == -1)
         return fd;
@@ -1317,8 +1359,7 @@ mcachefs_metadata_clean_fh_locked(mcachefs_metadata_id id)
         mdata = mcachefs_metadata_do_get(id);
         // we have to check if pointer exists, in case metadata was flushed
         // issue #5 - https://github.com/Doloops/mcachefs/issues/5
-        if (mdata)
-          mdata->fh = 0;
+        if (mdata!=NULL) mdata->fh = 0;
     }
 }
 

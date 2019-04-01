@@ -5,11 +5,11 @@ OBJECTS += mcachefs-io.o mcachefs-lowlevel.o mcachefs-hash.o
 OBJECTS += mcachefs-config.o
 CC = gcc
 
-# CFLAGS += -g -O0
-# CFLAGS += -O0 -pg -g -DDEBUG -D__MCACHEFS_MUTEX_DEBUG 
+# CFLAGS += -O0
+# CFLAGS += -pg -g -DDEBUG #-D__MCACHEFS_MUTEX_DEBUG
 # CFLAGS += -O3 -pg -g -fprofile-arcs
-CFLAGS += -O3
-CFLAGS += -I. -I. -I/usr/include/fuse -Wall -W -D_FILE_OFFSET_BITS=64
+CFLAGS += -Ofast
+CFLAGS +=  -I. -I. -I/usr/include/fuse -Wall -W -D_FILE_OFFSET_BITS=64 -fpermissive
 LCFLAGS += -ldl -lpthread -lrt -lfuse
 
 TARGET = mcachefs

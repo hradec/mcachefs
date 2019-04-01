@@ -7,6 +7,8 @@
 
 #ifndef MCACHEFSMETADATA_H_
 #define MCACHEFSMETADATA_H_
+#include <signal.h>
+#include <setjmp.h>
 
 static const mcachefs_fh_t mcachefs_fh_t_NULL = ~((mcachefs_fh_t) 0);
 static const mcachefs_metadata_id mcachefs_metadata_id_EMPTY =
