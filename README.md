@@ -64,8 +64,7 @@ the mounted structure :
  * wrstate : current mcachefs write state (see below)
  * journal : dumps the contents of the journal, id est the modifications made
    to the filesystem and not yet applied to the target.
- * apply_journal : echo apply > [..]/.mcachefs/apply_journal to apply the
-   current modifications.
+ * action : `cat .mcachefs/action` it to show all the actions you can execute (echo [action] > .mcachefs/action)
  * drop_journal : echo apply > [..]/.mcachefs/drop_journal to drop the
    current modifications.
  * file_thread_interval : the openned file garbage collector interval, in 
@@ -74,6 +73,7 @@ the mounted structure :
    openned files (to spare openned file descriptors)
  * metadata : dumps the contents of the metafile, with the folder hierarchy
    and the hashtree
+ * metadata_map_ttl : maximum time to flush unused metadata blocks 
  * metadata_flush : flushes the contents of the metafile (should apply the
    journal first).
  * timeslices : dumps the currently openned files, sorted by their last usage
