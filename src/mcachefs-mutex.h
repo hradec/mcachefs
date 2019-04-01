@@ -35,8 +35,8 @@ void mcachefs_mutex_check_unlocked(struct mcachefs_mutex_t *mutex,
 
 #else
 
-#define mcachefs_mutex_lock(__mutex,name,context) pthread_mutex_lock(&((__mutex)->mutex))
-#define mcachefs_mutex_unlock(__mutex,name,context) pthread_mutex_unlock(&((__mutex)->mutex))
+#define mcachefs_mutex_lock(__mutex,name,context) pthread_yield();pthread_mutex_lock(&((__mutex)->mutex))
+#define mcachefs_mutex_unlock(__mutex,name,context) pthread_yield();pthread_mutex_unlock(&((__mutex)->mutex))
 #define mcachefs_mutex_check_locked(__mutex,name,context) do{} while(0)
 #define mcachefs_mutex_check_unlocked(__mutex,name,context) do{} while(0)
 
