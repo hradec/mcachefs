@@ -536,6 +536,65 @@ mcachefs_transfer_do_writeback(struct mcachefs_file_t *mfile,
     free(realpath);
 }
 
+
+int pthread_copy_err = 0;
+void* pthread_copy( int source_fd, int target_fd, off_t offset, ssize_t tocopy, char *window, struct mcachefs_file_t *mfile )
+{
+  off_t sendfile_offset;
+  ssize_t copied;
+
+  if (0)
+  {
+      /*
+       * Do not even try to use sendfile() for the moment
+       */
+      sendfile_offset = offset;
+      copied = sendfile(target_fd, source_fd, &sendfile_offset, tocopy);
+      if (copied == -1)
+      {
+          Err("Could not copy ! err=%d:%s\n", errno, strerror(errno));
+          goto copyerr;
+      }
+      if (copied != tocopy)
+      {
+          Err("Could not write !! : copied=%ld tocopy=%ld, err=%d:%s\n",
+              (unsigned long) copied, (unsigned long) tocopy, errno,
+              strerror(errno));
+          goto copyerr;
+      }
+  }
+  else
+  {
+      Log("tocopy=%ld\n", (unsigned long) tocopy);
+      copied = pread(source_fd, window, tocopy, offset);
+      if (tocopy != copied)
+      {
+          Err("Could not read !! : copied=%ld tocopy=%ld, err=%d:%s\n",
+              (unsigned long) copied, (unsigned long) tocopy, errno,
+              strerror(errno));
+          goto copyerr;
+      }
+      if (mcachefs_config_get_read_state() == MCACHEFS_STATE_QUITTING)
+      {
+          Err("Interrupting copy of '%s'\n", mfile->path);
+          goto copyerr;
+      }
+
+      copied = pwrite(target_fd, window, tocopy, offset);
+      if (tocopy != copied)
+      {
+          Err("Could not write !! : copied=%ld tocopy=%ld, err=%d:%s\n",
+              (unsigned long) copied, (unsigned long) tocopy, errno,
+              strerror(errno));
+          goto copyerr;
+      }
+
+  }
+  copyerr:
+    pthread_copy_err=1;
+}
+
+
 int
 mcachefs_transfer_file(struct mcachefs_file_t *mfile, int tobacking)
 {
@@ -546,6 +605,7 @@ mcachefs_transfer_file(struct mcachefs_file_t *mfile, int tobacking)
     off_t window_size = mcachefs_transfer_window_size_min;
     off_t window_size_alloced = window_size;
     off_t window_size_max = mcachefs_transfer_window_size_max;
+    off_t number_of_chunks;
     char *window = NULL;
     struct timeval now, last, begin_copy, before;
     time_t interval, copy_interval, global_interval;
@@ -607,6 +667,8 @@ mcachefs_transfer_file(struct mcachefs_file_t *mfile, int tobacking)
 
     window = (char *) malloc(window_size_alloced);
 
+    number_of_chunks = size / window_size;
+
     while (1)
     {
         if (mcachefs_config_get_read_state() == MCACHEFS_STATE_QUITTING)
@@ -619,53 +681,13 @@ mcachefs_transfer_file(struct mcachefs_file_t *mfile, int tobacking)
 
         tocopy = remains > window_size ? window_size : remains;
 
-        if (0)
-        {
-            /*
-             * Do not even try to use sendfile() for the moment
-             */
-            sendfile_offset = offset;
-            copied = sendfile(target_fd, source_fd, &sendfile_offset, tocopy);
-            if (copied == -1)
-            {
-                Err("Could not copy ! err=%d:%s\n", errno, strerror(errno));
-                goto copyerr;
-            }
-            if (copied != tocopy)
-            {
-                Err("Could not write !! : copied=%ld tocopy=%ld, err=%d:%s\n",
-                    (unsigned long) copied, (unsigned long) tocopy, errno,
-                    strerror(errno));
-                goto copyerr;
-            }
-        }
-        else
-        {
-            Log("tocopy=%ld\n", (unsigned long) tocopy);
-            copied = pread(source_fd, window, tocopy, offset);
-            if (tocopy != copied)
-            {
-                Err("Could not read !! : copied=%ld tocopy=%ld, err=%d:%s\n",
-                    (unsigned long) copied, (unsigned long) tocopy, errno,
-                    strerror(errno));
-                goto copyerr;
-            }
-            if (mcachefs_config_get_read_state() == MCACHEFS_STATE_QUITTING)
-            {
-                Err("Interrupting copy of '%s'\n", mfile->path);
-                goto copyerr;
-            }
+        pthread_copy( source_fd, target_fd, offset, tocopy, window, mfile );
+        if ( pthread_copy_err )
+          goto copyerr;
 
-            copied = pwrite(target_fd, window, tocopy, offset);
-            if (tocopy != copied)
-            {
-                Err("Could not write !! : copied=%ld tocopy=%ld, err=%d:%s\n",
-                    (unsigned long) copied, (unsigned long) tocopy, errno,
-                    strerror(errno));
-                goto copyerr;
-            }
-
-        }
+        // since pthread_copy will report error is copied != tocopy,
+        // we can assume copied MUST be tocopy here.
+        copied = tocopy;
 
         if (mcachefs_config_get_read_state() == MCACHEFS_STATE_QUITTING)
         {

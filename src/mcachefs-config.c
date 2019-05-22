@@ -237,6 +237,7 @@ mcachefs_set_current_config(struct mcachefs_config *config)
           config->transfer_threads_type_nb[threadtype] = 1;
     }
 
+
     current_config = config;
 }
 
