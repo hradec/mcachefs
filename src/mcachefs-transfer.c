@@ -590,6 +590,7 @@ void* pthread_copy( int source_fd, int target_fd, off_t offset, ssize_t tocopy, 
       }
 
   }
+  return 0;
   copyerr:
     pthread_copy_err=1;
 }
