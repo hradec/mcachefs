@@ -37,6 +37,13 @@ int mcachefs_createfile_cache(const char *path, mode_t mode);
 int mcachefs_fileincache(const char *path);
 
 /**
+ * Checks if the file is in cache
+ * Returns 0 if not in cache, non-zero if in cache
+ * uses passed st so we can access the stat data if we want
+ */
+int mcachefs_fileincache_st(const char *path, struct stat *st);
+
+/**
  * the same as mcachefs_fileincache, but with some extra logic
  * to flag broken cached files to be re-downloaded
  */

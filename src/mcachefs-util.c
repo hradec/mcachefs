@@ -66,8 +66,19 @@ mcachefs_fileincache(const char *path)
 }
 
 int
-mcachefs_check_fileincache(struct mcachefs_file_t *mfile,
-                           struct stat *metadata_st)
+mcachefs_fileincache_st(const char *path, struct stat *st)
+{
+    char *cachepath;
+    int res;
+
+    cachepath = mcachefs_makepath_cache(path);
+    res = lstat(cachepath, st);
+    free(cachepath);
+    return res == 0;
+}
+
+int
+mcachefs_check_fileincache(struct mcachefs_file_t *mfile, struct stat *metadata_st)
 {
   char *cachepath;
   struct stat st;
@@ -84,6 +95,10 @@ mcachefs_check_fileincache(struct mcachefs_file_t *mfile,
   // if the file size differs from cache file and metadata, return
   // false so we can re-download it
   if ( metadata_st->st_size != st.st_size )
+    return 0;
+
+  // if modification time differs, lets re-download it.
+  if ( metadata_st->st_mtime != st.st_mtime )
     return 0;
 
   // if we got here, the file is correct, so return true

@@ -354,7 +354,7 @@ mcachefs_transfer_get_next_file_to_back_locked(int type)
     return mfile;
 }
 
-void mcachefs_transfer_do_backing(struct mcachefs_file_t *mfile);
+void mcachefs_transfer_do_backing(struct mcachefs_file_t *mfile, struct utimbuf *timbuf);
 
 void mcachefs_transfer_do_writeback(struct mcachefs_file_t *mfile, struct utimbuf *timbuf);
 int mcachefs_transfer_file(struct mcachefs_file_t *mfile, int tobacking);
@@ -403,7 +403,7 @@ mcachefs_transfer_do_transfer(struct mcachefs_file_t *mfile, int transfer_type)
 
     if (transfer_type == MCACHEFS_TRANSFER_TYPE_BACKUP)
     {
-        mcachefs_transfer_do_backing(mfile);
+        mcachefs_transfer_do_backing(mfile, &timbuf);
     }
     else if (transfer_type == MCACHEFS_TRANSFER_TYPE_WRITEBACK)
     {
@@ -415,16 +415,26 @@ mcachefs_transfer_do_transfer(struct mcachefs_file_t *mfile, int transfer_type)
     }
 }
 
+char* formatdate(char* str, time_t val)
+{
+        strftime(str, 36, "%d.%m.%Y %H:%M:%S", localtime(&val));
+        return str;
+}
 void
-mcachefs_transfer_do_backing(struct mcachefs_file_t *mfile)
+mcachefs_transfer_do_backing(struct mcachefs_file_t *mfile, struct utimbuf *timbuf)
 {
     char *backingpath;
+    char *cachepath;
+    struct stat st;
 
-    if (mcachefs_fileincache(mfile->path))
+    cachepath = mcachefs_makepath_cache(mfile->path);
+
+    if (mcachefs_fileincache_st(mfile->path, &st))
     {
-        // Err("File '%s' already in cache !\n", mfile->path);
-        // return;
-        Info("File '%s' already in cache but is older than the one in the source.\n", mfile->path);
+        if ( timbuf->modtime == st.st_mtime ){
+            Err("File '%s' already in cache !\n", mfile->path);
+            return;
+        }
     }
     if (mcachefs_createfile_cache(mfile->path, 0644))
     {
@@ -436,6 +446,17 @@ mcachefs_transfer_do_backing(struct mcachefs_file_t *mfile)
 
     if (mcachefs_transfer_file(mfile, 1) == 0)
     {
+        if (utime(cachepath, timbuf))
+        {
+            Err("Could not utime(%s) : err=%d:%s\n", cachepath, errno, strerror(errno));
+        }
+        else
+        {
+            char *tmp_buff = malloc(64);
+            Info("utime '%s' '%s': ok.\n", cachepath, formatdate(tmp_buff, timbuf->modtime));
+            free(tmp_buff);
+        }
+        free(cachepath);
         return;
     }
 
