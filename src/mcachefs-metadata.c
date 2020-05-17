@@ -498,7 +498,7 @@ mcachefs_metadata_equals(struct mcachefs_metadata_t *mdata, const char *path, in
     {
         return mdata->id == mcachefs_metadata_id_root;
     }
-    
+
     const char *namestack[MCACHEFS_METADATA_MAX_LEVELS];
     int levels = 0;
 
@@ -1035,7 +1035,7 @@ mcachefs_metadata_fix_double_black(struct mcachefs_metadata_t *mdata)
             }
             else
             {
-                // 2 black children 
+                // 2 black children
                 brother->color = RED;
                 if (up->color == BLACK)
                 {
@@ -1188,13 +1188,16 @@ mcachefs_metadata_do_remove_hash(struct mcachefs_metadata_t *mdata)
                     brother->color = RED;
                 }
             }
-            if (iamleft)
+            if(up)
             {
-                up->left = 0;
-            }
-            else
-            {
-                up->right = 0;
+                if (iamleft)
+                {
+                    up->left = 0;
+                }
+                else
+                {
+                    up->right = 0;
+                }
             }
             Log("Ok, no replacer done !\n");
             return;
@@ -1848,7 +1851,9 @@ mcachefs_metadata_remove_children(struct mcachefs_metadata_t *metadata)
 int
 mcachefs_metadata_getattr(const char *path, struct stat *stbuf)
 {
-    struct mcachefs_metadata_t *mdata = mcachefs_metadata_find(path);
+    // struct mcachefs_metadata_t *mdata = mcachefs_metadata_find(path);
+    struct mcachefs_metadata_t *mdata = mcachefs_metadata_find_locked(path);
+
 
     if (!mdata)
     {
@@ -1863,7 +1868,7 @@ mcachefs_metadata_getattr(const char *path, struct stat *stbuf)
         (long) mdata->st.st_ino, (long) mdata->st.st_mode, (long) mdata->st.st_nlink, (long) mdata->st.st_uid, (long) mdata->st.st_gid,
         (long) mdata->st.st_rdev, (long) mdata->st.st_size, (long) mdata->st.st_blksize, (long) mdata->st.st_blocks, mdata->st.st_atime, mdata->st.st_mtime,
         mdata->st.st_ctime);
-    mcachefs_metadata_release(mdata);
+    // mcachefs_metadata_release(mdata);
 
     if (S_ISDIR(stbuf->st_mode) && stbuf->st_size == 0)
     {
@@ -1884,11 +1889,11 @@ mcachefs_metadata_make_entry(const char *path, mode_t mode, dev_t rdev)
 
     Log("mcachefs_metadata_make_entry : '%s', mode=%d\n", path, mode);
 
-    mdata = mcachefs_metadata_find(path);
+    mdata = mcachefs_metadata_find_locked(path);
 
     if (mdata)
     {
-        mcachefs_metadata_release(mdata);
+        // mcachefs_metadata_release(mdata);
         return -EEXIST;
     }
 
@@ -1896,12 +1901,14 @@ mcachefs_metadata_make_entry(const char *path, mode_t mode, dev_t rdev)
 
     Log("mcachefs_metadata_make_entry : path='%s', dpath='%s', lname='%s'\n", path, dpath, lname);
 
-    father = mcachefs_metadata_find(dpath);
+    father = mcachefs_metadata_find_locked(dpath);
     fatherid = father->id;
 
     free(dpath);
     if (!father)
         return -ENOENT;
+
+    mcachefs_metadata_lock();
     if (!father->child)
     {
         Err("We did not fetch father contents !!!\n");
@@ -2003,7 +2010,7 @@ mcachefs_metadata_rmdir_unlink(const char *path, int isDir)
 
     Log("metadata_rmdir : '%s'\n", path);
 
-    mdata = mcachefs_metadata_find(path);
+    mdata = mcachefs_metadata_find_locked(path);
 
     if (!mdata)
     {
@@ -2014,18 +2021,19 @@ mcachefs_metadata_rmdir_unlink(const char *path, int isDir)
     {
         if (!S_ISDIR(mdata->st.st_mode))
         {
-            mcachefs_metadata_release(mdata);
+            // mcachefs_metadata_release(mdata);
             return -ENOTDIR;
         }
         if (mdata->child == 0)
         {
+            mcachefs_metadata_lock();
             mdataid = mdata->id;
             mcachefs_metadata_get_child(mdata);
             mdata = mcachefs_metadata_do_get(mdataid);
+            mcachefs_metadata_release(mdata);
         }
         if (mdata->child != mcachefs_metadata_id_EMPTY)
         {
-            mcachefs_metadata_release(mdata);
             return -ENOTEMPTY;
         }
     }
@@ -2034,16 +2042,18 @@ mcachefs_metadata_rmdir_unlink(const char *path, int isDir)
         if (!S_ISREG(mdata->st.st_mode) && !S_ISLNK(mdata->st.st_mode))
         {
             Err("Not supported : unlink(%s), mode=%lo\n", path, (long) mdata->st.st_mode);
-            mcachefs_metadata_release(mdata);
             return -ENOSYS;
         }
         if (mdata->st.st_nlink > 1)
         {
             Log("Will unlink multiple links from %llu\n", mdata->id);
+            mcachefs_metadata_lock();
             mcachefs_metadata_unlink_list(mdata);
+            mcachefs_metadata_release(mdata);
         }
     }
 
+    mcachefs_metadata_lock();
     mcachefs_metadata_unlink_entry(mdata);
     mcachefs_metadata_remove_hash(mdata);
     mcachefs_metadata_remove(mdata);
@@ -2139,14 +2149,13 @@ mcachefs_metadata_rename_entry(const char *path, const char *to)
     char *targetpath;
 
     Log("RENAME : %s => %s\n", path, to);
-    mcachefs_metadata_lock();
-    mdata = mcachefs_metadata_find_locked(path);
 
+    mdata = mcachefs_metadata_find_locked(path);
     if (!mdata)
     {
-        mcachefs_metadata_unlock();
         return -ENOENT;
     }
+    mcachefs_metadata_lock();
     if (S_ISDIR(mdata->st.st_mode))
     {
         /*
@@ -2158,10 +2167,11 @@ mcachefs_metadata_rename_entry(const char *path, const char *to)
 
     mdataid = mdata->id;
     mdata = NULL;
+    mcachefs_metadata_unlock();
 
     if ((mtarget = mcachefs_metadata_find_locked(to)) != NULL)
     {
-        mcachefs_metadata_unlock();
+        // mcachefs_metadata_unlock();
         return -EEXIST;
     }
 
@@ -2174,15 +2184,16 @@ mcachefs_metadata_rename_entry(const char *path, const char *to)
 
     if (!mtarget)
     {
-        mcachefs_metadata_unlock();
+        // mcachefs_metadata_unlock();
         return -ENOENT;
     }
     if (!S_ISDIR(mtarget->st.st_mode))
     {
-        mcachefs_metadata_unlock();
+        // mcachefs_metadata_unlock();
         return -ENOTDIR;
     }
 
+    mcachefs_metadata_lock();
     mdata = mcachefs_metadata_do_get(mdataid);
 
     Log("mdata : %llu, child=%llu\n", mdata->id, mdata->child);
@@ -2336,7 +2347,7 @@ mcachefs_metadata_populate_vops()
 {
     mcachefs_metadata_check_unlocked();
 
-    struct mcachefs_metadata_t *mdata_root = mcachefs_metadata_find("/");
+    struct mcachefs_metadata_t *mdata_root = mcachefs_metadata_find_locked("/");
     mcachefs_metadata_id mdata_root_id = mdata_root->id;
 
     /**
@@ -2363,7 +2374,7 @@ mcachefs_metadata_populate_vops()
 
     mdata_root = mcachefs_metadata_do_get(mdata_root_id);
     Log("Now Root (%llu,%p) has child (%llu)\n", mdata_root->id, mdata_root, mdata_root->child);
-    mcachefs_metadata_release(mdata_root);
+    // mcachefs_metadata_release(mdata_root);
 }
 
 #ifdef __MCACHEFS_METADATA_HAS_FILLENTRY

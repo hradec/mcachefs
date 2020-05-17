@@ -61,20 +61,23 @@ mcachefs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
         return res;
 
     Log("READDIR path='%s'\n", path);
-    mfather = mcachefs_metadata_find(path);
+    mfather = mcachefs_metadata_find_locked(path);
 
     if (!mfather)
         return -ENOENT;
 
+    mcachefs_metadata_lock();
     for (mchild = mcachefs_metadata_get_child(mfather); mchild; mchild = mcachefs_metadata_get(mchild->next))
     {
+        mcachefs_metadata_release(mfather);
         Log("READDIR    '%s' (%p, next=%llu)\n", mchild->d_name, mchild, mchild->next);
         res = filler(buf, mchild->d_name, &(mchild->st), 0);
+        mcachefs_metadata_lock();
         if (res)
             break;
     }
-
     mcachefs_metadata_release(mfather);
+
     return res;
 }
 
@@ -87,17 +90,17 @@ mcachefs_readlink(const char *path, char *buf, size_t size)
     Log("mcachefs_readlink(path = %s, buf = ..., size = %lu)\n", path, (long) size);
 
     memset(buf, 0, size);
-    mdata = mcachefs_metadata_find(path);
+    mdata = mcachefs_metadata_find_locked(path);
 
     if (!mdata)
         return -ENOENT;
 
     if (!S_ISLNK(mdata->st.st_mode))
     {
-        mcachefs_metadata_release(mdata);
+        // mcachefs_metadata_release(mdata);
         return -EINVAL;
     }
-    mcachefs_metadata_release(mdata);
+    // mcachefs_metadata_release(mdata);
 
     backingpath = mcachefs_makepath_cache(path);
     if (!backingpath)
@@ -323,7 +326,7 @@ mcachefs_link(const char *from, const char *to)
     int res;
     char *backingfrom, *backingto;
 
-    struct mcachefs_metadata_t *meta = mcachefs_metadata_find(from);
+    struct mcachefs_metadata_t *meta = mcachefs_metadata_find_locked(from);
     if (meta == NULL)
     {
         return -ENOENT;
@@ -331,7 +334,7 @@ mcachefs_link(const char *from, const char *to)
     struct stat fromst = meta->st;
     mcachefs_metadata_id fromid = meta->id;
     mcachefs_metadata_id next_hardlink = meta->hardlink;
-    mcachefs_metadata_release(meta);
+    // mcachefs_metadata_release(meta);
 
     backingfrom = mcachefs_makepath_cache(from);
     if (backingfrom == NULL)
@@ -358,7 +361,7 @@ mcachefs_link(const char *from, const char *to)
     {
         return res;
     }
-    meta = mcachefs_metadata_find(to);
+    meta = mcachefs_metadata_find_locked(to);
     mcachefs_metadata_id toid = 0;
     if (!meta)
     {
@@ -368,16 +371,16 @@ mcachefs_link(const char *from, const char *to)
     meta->st = fromst;
     meta->hardlink = next_hardlink ? next_hardlink : fromid;
     meta->st.st_nlink++;
-    mcachefs_metadata_release(meta);
+    // mcachefs_metadata_release(meta);
 
-    meta = mcachefs_metadata_find(from);
+    meta = mcachefs_metadata_find_locked(from);
     if (!meta)
     {
         Bug("Could not get meta for from=%s\n", from);
     }
     meta->st.st_nlink++;
     meta->hardlink = toid;
-    mcachefs_metadata_release(meta);
+    // mcachefs_metadata_release(meta);
     mcachefs_journal_append(mcachefs_journal_op_link, from, to, 0, 0, 0, 0, 0, NULL);
     return 0;
 }
@@ -389,10 +392,11 @@ mcachefs_chmod(const char *path, mode_t mode)
     static const mode_t umask = 0777;
     Log("mcachefs_chmod(path = %s, mode = %lo)\n", path, (long) mode);
 
-    mdata = mcachefs_metadata_find(path);
+    mdata = mcachefs_metadata_find_locked(path);
     if (!mdata)
         return -ENOENT;
 
+    mcachefs_metadata_lock();
     mdata->st.st_mode = ((mdata->st.st_mode & ~umask) | (mode & umask));
     mcachefs_metadata_notify_update(mdata);
     mcachefs_metadata_release(mdata);
@@ -412,11 +416,11 @@ mcachefs_chown(const char *path, uid_t uid, gid_t gid)
     if (__MCACHEFS_IS_VOPS_FILE(path))
         return -ENOSYS;
 
-    mdata = mcachefs_metadata_find(path);
+    mdata = mcachefs_metadata_find_locked(path);
     if (!mdata)
         return -ENOENT;
 
-
+    mcachefs_metadata_lock();
     if (uid == 0xFFFFFFFF)
         uid = mdata->st.st_uid;
     else
@@ -442,10 +446,11 @@ mcachefs_truncate(const char *path, off_t size)
 
     Log("mcachefs_truncate(path = %s, size = %llu)\n", path, (unsigned long long) size);
 
-    mdata = mcachefs_metadata_find(path);
+    mdata = mcachefs_metadata_find_locked(path);
     if (!mdata)
         return -ENOENT;
 
+    mcachefs_metadata_lock();
     mdata->st.st_size = size;
 
     if (mdata->fh)
@@ -508,8 +513,10 @@ mcachefs_utime(const char *path, struct utimbuf *buf)
     struct mcachefs_metadata_t *mdata;
     Log("mcachefs_utime(path = %s, act=%lu, mod=%lu)\n", path, buf->actime, buf->modtime);
 
-    if ((mdata = mcachefs_metadata_find(path)) == NULL)
+    if ((mdata = mcachefs_metadata_find_locked(path)) == NULL)
         return -ENOENT;
+
+    mcachefs_metadata_lock();
 
     mdata->st.st_atime = buf->actime;
     mdata->st.st_mtime = buf->modtime;
@@ -535,7 +542,7 @@ mcachefs_open(const char *path, struct fuse_file_info *info)
 
     mcachefs_file_type_t type = mcachefs_file_type_file;
 
-    mdata = mcachefs_metadata_find(path);
+    mdata = mcachefs_metadata_find_locked(path);
 
     if (mdata == NULL)
     {
@@ -545,7 +552,7 @@ mcachefs_open(const char *path, struct fuse_file_info *info)
     if (!S_ISREG(mdata->st.st_mode))
     {
         Err("open(%s) : not a regular file !\n", path);
-        mcachefs_metadata_release(mdata);
+        // mcachefs_metadata_release(mdata);
         return -EISDIR;
     }
 
@@ -558,13 +565,14 @@ mcachefs_open(const char *path, struct fuse_file_info *info)
 #ifdef MCACHEFS_DISABLE_WRITE
         if (__IS_WRITE(info->flags))
         {
-            mcachefs_metadata_release(mdata);
+            // mcachefs_metadata_release(mdata);
             return -EROFS;
         }
 #endif
         type = mcachefs_file_type_file;
     }
 
+    mcachefs_metadata_lock();
     info->fh = mcachefs_fileid_get(mdata, path, type);
 
     st.st_size  = mdata->st.st_size;
