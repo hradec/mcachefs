@@ -162,30 +162,33 @@ mcachefs_read_file(struct mcachefs_file_t *mfile, char *buf, size_t size, off_t 
     }
     mcachefs_file_putfd(mfile, use_real);
 
-    if (res > 0)
-    {
-        mcachefs_file_update_metadata(mfile, 0, 0);
-    }
-    if (res != (int) size)
-    {
-        mdata = mcachefs_file_get_metadata(mfile);
-        if (!mdata)
-        {
-            Err("Could not fetch metadata for '%s' !\n", mfile->path);
-        }
-        else if ((off_t) size + offset > mdata->st.st_size)
-        {
-            Log("Read after tail '%s' : size=%lu, offset=%lu, end=%lu, size=%lu\n", mfile->path, (unsigned long) size,
-                (unsigned long) offset, (unsigned long) ((off_t) size + offset), (unsigned long) mdata->st.st_size);
-        }
-        else
-        {
-            Err("Could not fully read '%s' : asked=%lu, had %d, offset=%lu, max=%lu, tail=%lu\n", mfile->path,
-                (unsigned long) size, res, (unsigned long) offset, (unsigned long) (offset + size), (unsigned long) mdata->st.st_size);
-        }
-        if (mdata)
-            mcachefs_metadata_release(mdata);
-    }
+    // update access time only
+    // if (res > 0)
+    // {
+    //     mcachefs_file_update_metadata(mfile, 0, 0);
+    // }
+
+    // log only!!
+    // if (res != (int) size)
+    // {
+    //     mdata = mcachefs_file_get_metadata(mfile);
+    //     if (!mdata)
+    //     {
+    //         Err("Could not fetch metadata for '%s' !\n", mfile->path);
+    //     }
+    //     else if ((off_t) size + offset > mdata->st.st_size)
+    //     {
+    //         Log("Read after tail '%s' : size=%lu, offset=%lu, end=%lu, size=%lu\n", mfile->path, (unsigned long) size,
+    //             (unsigned long) offset, (unsigned long) ((off_t) size + offset), (unsigned long) mdata->st.st_size);
+    //     }
+    //     else
+    //     {
+    //         Err("Could not fully read '%s' : asked=%lu, had %d, offset=%lu, max=%lu, tail=%lu\n", mfile->path,
+    //             (unsigned long) size, res, (unsigned long) offset, (unsigned long) (offset + size), (unsigned long) mdata->st.st_size);
+    //     }
+    //     if (mdata)
+    //         mcachefs_metadata_release(mdata);
+    // }
     Log("read : res=%d\n", res);
     return res;
 }

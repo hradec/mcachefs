@@ -1817,6 +1817,9 @@ mcachefs_metadata_remove_children(struct mcachefs_metadata_t *metadata)
             if (!father)
             {
                 Bug("Shall have had a father !\n");
+                father = mcachefs_metadata_get_root();
+                metadata->child = 0;
+                return;
             }
             if (father->id == metadata->id)
             {
