@@ -11,7 +11,17 @@
 #include "mcachefs-vops.h"
 
 // Waiting for the cache to be populated, in nanoseconds
-static const int WAIT_CACHE_INTERVAL = 100 * 1000 * 1000;
+// If this amount of time times out, it reverts to the original backend file,
+// but doesn't interrupt the download.
+// We wait for 60 seconds, but interrupting the wait 1000 times to check if the
+// download has finished!
+// TODO: we should ignore the timeout if the file is too big to be read directly
+// from the backend anyway. It should wait forever in this case, for the download
+// to finish, or have a bigger timeout. Or maybe the timeout should be relative
+// to file size, with a min for really small files.
+#define WAIT_CACHE_INTERVAL_INTERRUPT 100000
+static const int WAIT_CACHE_INTERVAL = 1000 * 1000 * 1000 / WAIT_CACHE_INTERVAL_INTERRUPT;
+static const int WAIT_CACHE_COUNT = 60 * WAIT_CACHE_INTERVAL_INTERRUPT;
 
 int
 mcachefs_open_mfile(struct mcachefs_file_t *mfile,
@@ -77,7 +87,7 @@ static int
 mcachefs_read_wait_accessible(struct mcachefs_file_t *mfile, size_t size, off_t offset)
 {
     int use_real = 1;
-    int waited_backing = 0, waited_backing_max = 10;
+    int waited_backing = 0, waited_backing_max = WAIT_CACHE_COUNT;
     struct timespec read_wait_time;
 
     mcachefs_file_lock_file(mfile);
@@ -162,30 +172,33 @@ mcachefs_read_file(struct mcachefs_file_t *mfile, char *buf, size_t size, off_t 
     }
     mcachefs_file_putfd(mfile, use_real);
 
-    if (res > 0)
-    {
-        mcachefs_file_update_metadata(mfile, 0, 0);
-    }
-    if (res != (int) size)
-    {
-        mdata = mcachefs_file_get_metadata(mfile);
-        if (!mdata)
-        {
-            Err("Could not fetch metadata for '%s' !\n", mfile->path);
-        }
-        else if ((off_t) size + offset > mdata->st.st_size)
-        {
-            Log("Read after tail '%s' : size=%lu, offset=%lu, end=%lu, size=%lu\n", mfile->path, (unsigned long) size,
-                (unsigned long) offset, (unsigned long) ((off_t) size + offset), (unsigned long) mdata->st.st_size);
-        }
-        else
-        {
-            Err("Could not fully read '%s' : asked=%lu, had %d, offset=%lu, max=%lu, tail=%lu\n", mfile->path,
-                (unsigned long) size, res, (unsigned long) offset, (unsigned long) (offset + size), (unsigned long) mdata->st.st_size);
-        }
-        if (mdata)
-            mcachefs_metadata_release(mdata);
-    }
+    // update access time only
+    // if (res > 0)
+    // {
+    //     mcachefs_file_update_metadata(mfile, 0, 0);
+    // }
+
+    // log only!!
+    // if (res != (int) size)
+    // {
+    //     mdata = mcachefs_file_get_metadata(mfile);
+    //     if (!mdata)
+    //     {
+    //         Err("Could not fetch metadata for '%s' !\n", mfile->path);
+    //     }
+    //     else if ((off_t) size + offset > mdata->st.st_size)
+    //     {
+    //         Log("Read after tail '%s' : size=%lu, offset=%lu, end=%lu, size=%lu\n", mfile->path, (unsigned long) size,
+    //             (unsigned long) offset, (unsigned long) ((off_t) size + offset), (unsigned long) mdata->st.st_size);
+    //     }
+    //     else
+    //     {
+    //         Err("Could not fully read '%s' : asked=%lu, had %d, offset=%lu, max=%lu, tail=%lu\n", mfile->path,
+    //             (unsigned long) size, res, (unsigned long) offset, (unsigned long) (offset + size), (unsigned long) mdata->st.st_size);
+    //     }
+    //     if (mdata)
+    //         mcachefs_metadata_release(mdata);
+    // }
     Log("read : res=%d\n", res);
     return res;
 }
