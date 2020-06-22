@@ -11,7 +11,9 @@
 #include "mcachefs-vops.h"
 
 // Waiting for the cache to be populated, in nanoseconds
-static const int WAIT_CACHE_INTERVAL = 60 * 1000 * 1000 * 1000;
+#define WAIT_CACHE_INTERVAL_INTERRUPT 1000
+static const int WAIT_CACHE_INTERVAL = 1000 * 1000 * 1000 / WAIT_CACHE_INTERVAL_INTERRUPT;
+static const int WAIT_CACHE_COUNT = 60 * WAIT_CACHE_INTERVAL_INTERRUPT;
 
 int
 mcachefs_open_mfile(struct mcachefs_file_t *mfile,
@@ -77,7 +79,7 @@ static int
 mcachefs_read_wait_accessible(struct mcachefs_file_t *mfile, size_t size, off_t offset)
 {
     int use_real = 1;
-    int waited_backing = 0, waited_backing_max = 10;
+    int waited_backing = 0, waited_backing_max = WAIT_CACHE_COUNT;
     struct timespec read_wait_time;
 
     mcachefs_file_lock_file(mfile);
