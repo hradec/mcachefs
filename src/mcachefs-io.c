@@ -11,6 +11,14 @@
 #include "mcachefs-vops.h"
 
 // Waiting for the cache to be populated, in nanoseconds
+// If this amount of time times out, it reverts to the original backend file,
+// but doesn't interrupt the download.
+// We wait for 60 seconds, but interrupting the wait 1000 times to check if the
+// download has finished!
+// TODO: we should ignore the timeout if the file is too big to be read directly
+// from the backend anyway. It should wait forever in this case, for the download
+// to finish, or have a bigger timeout. Or maybe the timeout should be relative
+// to file size, with a min for really small files.
 #define WAIT_CACHE_INTERVAL_INTERRUPT 1000
 static const int WAIT_CACHE_INTERVAL = 1000 * 1000 * 1000 / WAIT_CACHE_INTERVAL_INTERRUPT;
 static const int WAIT_CACHE_COUNT = 60 * WAIT_CACHE_INTERVAL_INTERRUPT;
