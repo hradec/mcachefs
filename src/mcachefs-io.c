@@ -19,7 +19,7 @@
 // from the backend anyway. It should wait forever in this case, for the download
 // to finish, or have a bigger timeout. Or maybe the timeout should be relative
 // to file size, with a min for really small files.
-#define WAIT_CACHE_INTERVAL_INTERRUPT 1000
+#define WAIT_CACHE_INTERVAL_INTERRUPT 100000
 static const int WAIT_CACHE_INTERVAL = 1000 * 1000 * 1000 / WAIT_CACHE_INTERVAL_INTERRUPT;
 static const int WAIT_CACHE_COUNT = 60 * WAIT_CACHE_INTERVAL_INTERRUPT;
 
